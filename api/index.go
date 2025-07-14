@@ -1,4 +1,3 @@
-
 package handler
 
 import (
@@ -8,8 +7,30 @@ import (
 	. "github.com/tbxark/g4vercel"
 )
 
+// Middleware untuk mengatur header CORS
+func corsMiddleware() HandlerFunc {
+	return func(c *Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		// Jika method OPTIONS, cukup return 200 tanpa lanjut ke handler
+		if c.Method == http.MethodOptions {
+			c.Writer.WriteHeader(http.StatusOK)
+			return
+		}
+
+		c.Next()
+	}
+}
+
 func Handler(w http.ResponseWriter, r *http.Request) {
 	server := New()
+
+	// Tambahkan middleware CORS
+	server.Use(corsMiddleware())
+
+	// Recovery middleware (biar kalau error tetap kirim JSON)
 	server.Use(Recovery(func(err interface{}, c *Context) {
 		if httpError, ok := err.(HttpError); ok {
 			c.JSON(httpError.Status, H{
@@ -22,11 +43,13 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}))
+
 	server.GET("/", func(context *Context) {
 		context.JSON(200, H{
 			"message": "OK",
 		})
 	})
+
 	server.GET("/hello", func(context *Context) {
 		name := context.Query("name")
 		if name == "" {
@@ -39,6 +62,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	})
+
 	server.GET("/user/:id", func(context *Context) {
 		context.JSON(400, H{
 			"data": H{
@@ -46,6 +70,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	})
+
 	server.GET("/long/long/long/path/*test", func(context *Context) {
 		context.JSON(200, H{
 			"data": H{
@@ -53,6 +78,6 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	})
+
 	server.Handle(w, r)
 }
-
