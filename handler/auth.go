@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-	"uper-eats/lib" 
+	"uper-eats/lib"
 
 	"github.com/labstack/echo/v4"
 	"github.com/supabase-community/supabase-go"
