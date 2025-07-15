@@ -4,24 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
+	"uper-eats/lib" 
 
 	"github.com/labstack/echo/v4"
 	"github.com/supabase-community/supabase-go"
+	"github.com/xendit/xendit-go/v3/invoice"
 )
 
-// route terkait order
 func RegisterOrderRoutes(g *echo.Group, client *supabase.Client) {
 	g.POST("/orders", createOrder(client))
 	g.GET("/orders", getOrderHistory(client))
 	g.GET("/orders/:id", getOrderDetail(client))
 }
 
-// Struct untuk request pembuatan order
 type CreateOrderRequest struct {
-	TenantID        int64                     `json:"tenant_id"`
-	OrderType       string                    `json:"order_type"` // 'pickup' or 'delivery'
-	DeliveryAddress string                    `json:"delivery_address,omitempty"`
+	TenantID        int64                  `json:"tenant_id"`
+	OrderType       string                 `json:"order_type"` 
+	DeliveryAddress string                 `json:"delivery_address,omitempty"`
 	Items           []CreateOrderItemRequest `json:"items"`
 }
 
@@ -38,13 +39,30 @@ func createOrder(client *supabase.Client) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Request tidak valid"})
 		}
 
-		// 1. Validasi dan hitung total harga (SERVER-SIDE)
-		var totalPrice float64 = 0
-		var orderItemsToInsert []OrderItem
+		// 1. Ambil data tenant
+		var tenantData struct {
+			Name string `json:"name"`
+		}
+		dataTenant, _, err := client.From("tenants").Select("name", "exact", false).Eq("id", fmt.Sprintf("%d", req.TenantID)).Single().Execute()
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Tenant tidak ditemukan."})
+		}
+		json.Unmarshal(dataTenant, &tenantData)
 
+		// 2. Ambil data user
+		var user User
+		userData, _, err := client.From("users").Select("email", "exact", false).Eq("id", fmt.Sprintf("%d", userID)).Single().Execute()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal mendapatkan data pengguna"})
+		}
+		json.Unmarshal(userData, &user)
+
+		// 3. Hitung total harga
+		var totalPrice float64
+		var orderItemsToInsert []OrderItem
 		for _, itemReq := range req.Items {
 			var menu Menu
-			data, _, err := client.From("menus").Select("price, is_available", "exact", false).Eq("id", fmt.Sprintf("%d", itemReq.MenuID)).Single().Execute()
+			data, _, err := client.From("menus").Select("price, is_available, name", "exact", false).Eq("id", fmt.Sprintf("%d", itemReq.MenuID)).Single().Execute()
 			if err != nil {
 				return c.JSON(http.StatusBadRequest, echo.Map{"error": fmt.Sprintf("Menu dengan ID %d tidak ditemukan", itemReq.MenuID)})
 			}
@@ -64,7 +82,7 @@ func createOrder(client *supabase.Client) echo.HandlerFunc {
 			})
 		}
 
-		// 2. Buat record di tabel 'orders'
+		// 4. Insert ke tabel 'orders'
 		newOrder := Order{
 			UserID:          userID,
 			TenantID:        req.TenantID,
@@ -75,43 +93,60 @@ func createOrder(client *supabase.Client) echo.HandlerFunc {
 			CreatedAt:       time.Now(),
 			UpdatedAt:       time.Now(),
 		}
-
 		var insertedOrder []Order
 		orderData, _, err := client.From("orders").Insert(newOrder, false, "error", "", "exact").Execute()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal membuat pesanan"})
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal membuat pesanan di database"})
 		}
 		json.Unmarshal(orderData, &insertedOrder)
 		orderID := insertedOrder[0].ID
 
-		// 3. Buat record di tabel 'order_items'
+		// 5. Insert item
 		for i := range orderItemsToInsert {
 			orderItemsToInsert[i].OrderID = orderID
 		}
 		_, _, err = client.From("order_items").Insert(orderItemsToInsert, false, "error", "", "exact").Execute()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal menyimpan detail pesanan"})
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal menyimpan item pesanan"})
 		}
 
-		// 4. (SIMULASI) Buat transaksi Midtrans dan kembalikan URL pembayaran
-		// Di production harus memanggil SDK Midtrans di sini
-		paymentRedirectURL := fmt.Sprintf("https://app.sandbox.midtrans.com/snap/v2/vtweb/%d-dummy-token", orderID)
+		// 6. Buat Invoice (tanpa ForUserId / Fees jika tidak didukung SDK kamu)
+		desc := fmt.Sprintf("Pemesanan di %s - Order #%d", tenantData.Name, orderID)
+		createInvoiceRequest := invoice.CreateInvoiceRequest{
+			ExternalId:  strconv.FormatInt(orderID, 10),
+			Amount:      float32(totalPrice),
+			PayerEmail:  &user.Email,
+			Description: &desc,
+		}
 
+		invoiceRequest := lib.XenditClient.InvoiceApi.
+			CreateInvoice(c.Request().Context()).
+			CreateInvoiceRequest(createInvoiceRequest) 
+
+		resp, _, err := invoiceRequest.Execute()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, echo.Map{
+				"error": "Gagal membuat invoice Xendit: " + err.Error(),
+			})
+		}
+
+
+		// 7. Response ke frontend
 		return c.JSON(http.StatusCreated, echo.Map{
-			"message":            "Pesanan berhasil dibuat, silakan lakukan pembayaran.",
-			"order_id":           orderID,
-			"total_price":        totalPrice,
-			"payment_redirect_url": paymentRedirectURL,
+			"message":     "Pesanan berhasil dibuat, silakan lakukan pembayaran.",
+			"order_id":    orderID,
+			"total_price": totalPrice,
+			"payment_url": resp.InvoiceUrl,
 		})
 	}
 }
 
+
 func getOrderHistory(client *supabase.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		userID := c.Get("userID").(int64)
-		
+
 		var results []Order
-		// Mengambil data order beserta info tenant
 		data, _, err := client.From("orders").Select("*, tenant_id(*)", "exact", false).Eq("user_id", fmt.Sprintf("%d", userID)).Execute()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal mengambil riwayat pesanan"})
@@ -131,7 +166,6 @@ func getOrderDetail(client *supabase.Client) echo.HandlerFunc {
 		orderID := c.Param("id")
 
 		var result Order
-		// Query kompleks untuk mengambil order, item-itemnya, dan info menu & tenant
 		query := "*, tenant_id(*), order_items(*, menu_id(*))"
 		data, _, err := client.From("orders").Select(query, "exact", false).Eq("id", orderID).Eq("user_id", fmt.Sprintf("%d", userID)).Single().Execute()
 		if err != nil {

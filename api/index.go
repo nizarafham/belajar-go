@@ -34,6 +34,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}))
 
 	supabaseClient := lib.NewSupabaseClient()
+	lib.InitXendit()
 
 	// Route testing
 	e.GET("/api/ping", func(c echo.Context) error {
@@ -45,6 +46,7 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	handler.RegisterTenantRoutes(e, supabaseClient)
 	handler.RegisterMenuRoutes(e, supabaseClient)
 	handler.RegisterAuthRoutes(e, supabaseClient)
+	handler.RegisterPaymentRoutes(e, supabaseClient)
 
 	// Protected routes (dengan JWT Auth)
 	apiV1 := e.Group("/api/v1", lib.AuthMiddleware)

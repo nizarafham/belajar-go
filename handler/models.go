@@ -11,12 +11,14 @@ type Location struct {
 }
 
 type Tenant struct {
-	ID          int64  `json:"id"`
-	LocationID  int64  `json:"location_id"`
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-	LogoURL     string `json:"logo_url,omitempty"`
-	IsOpen      bool   `json:"is_open"`
+	ID                 int64  `json:"id"`
+	LocationID         int64  `json:"location_id"`
+	Name               string `json:"name"`
+	Description        string `json:"description,omitempty"`
+	LogoURL            string `json:"logo_url,omitempty"`
+	IsOpen             bool   `json:"is_open"`
+	// Field untuk menyimpan ID Sub-Account Xendit milik tenant.
+	XenditSubaccountID string `json:"xendit_subaccount_id,omitempty"`
 }
 
 type Menu struct {
@@ -35,7 +37,7 @@ type User struct {
 	FullName     string    `json:"full_name"`
 	Email        string    `json:"email"`
 	PhoneNumber  string    `json:"phone_number,omitempty"`
-	PasswordHash string    `json:"-"`
+	PasswordHash string    `json:"-"` 
 	Role         string    `json:"role,omitempty"`
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 }
@@ -45,12 +47,12 @@ type Order struct {
 	UserID          int64     `json:"user_id"`
 	TenantID        int64     `json:"tenant_id"`
 	TotalPrice      float64   `json:"total_price"`
-	OrderType       string    `json:"order_type"` 
+	OrderType       string    `json:"order_type"`
 	Status          string    `json:"status"`
 	DeliveryAddress string    `json:"delivery_address,omitempty"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
-	// Untuk join data
+	
 	OrderItems []OrderItem `json:"order_items,omitempty"`
 	TenantInfo Tenant      `json:"tenant_info,omitempty"`
 }
@@ -61,6 +63,6 @@ type OrderItem struct {
 	MenuID       int64   `json:"menu_id"`
 	Quantity     int     `json:"quantity"`
 	PricePerItem float64 `json:"price_per_item"`
-	// Untuk join data
+	
 	MenuInfo Menu `json:"menu_info,omitempty"`
 }
