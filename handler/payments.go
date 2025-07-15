@@ -15,7 +15,7 @@ func RegisterPaymentRoutes(e *echo.Echo, client *supabase.Client) {
 func handleXenditNotification(client *supabase.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		// 1. Verifikasi Webhook (Sangat Penting untuk Keamanan)
-		callbackToken := c.Request().Header.Get("x-callback-token")
+		callbackToken := c.Request().Header.Get("X-CALLBACK-TOKEN")
 		expectedToken := os.Getenv("XENDIT_WEBHOOK_VERIFICATION_TOKEN")
 
 		if callbackToken != expectedToken {
