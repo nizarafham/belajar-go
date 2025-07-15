@@ -2,7 +2,7 @@ package handler
 
 import (
 	"net/http"
-	"uper-eats/api/lib" 
+	"uper-eats/lib" 
 
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
