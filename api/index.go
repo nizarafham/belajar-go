@@ -1,83 +1,39 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
+	"uper-eats/api/lib" 
 
-	. "github.com/tbxark/g4vercel"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 )
 
-// Middleware untuk mengatur header CORS
-func corsMiddleware() HandlerFunc {
-	return func(c *Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		// Jika method OPTIONS, cukup return 200 tanpa lanjut ke handler
-		if c.Method == http.MethodOptions {
-			c.Writer.WriteHeader(http.StatusOK)
-			return
-		}
-
-		c.Next()
-	}
-}
-
 func Handler(w http.ResponseWriter, r *http.Request) {
-	server := New()
+	e := echo.New()
 
-	// Tambahkan middleware CORS
-	server.Use(corsMiddleware())
-
-	// Recovery middleware (biar kalau error tetap kirim JSON)
-	server.Use(Recovery(func(err interface{}, c *Context) {
-		if httpError, ok := err.(HttpError); ok {
-			c.JSON(httpError.Status, H{
-				"message": httpError.Error(),
-			})
-		} else {
-			message := fmt.Sprintf("%s", err)
-			c.JSON(500, H{
-				"message": message,
-			})
-		}
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"}, // Untuk pengembangan, bisa diperketat di produksi
+		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPatch, http.MethodDelete, http.MethodOptions},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
 	}))
 
-	server.GET("/", func(context *Context) {
-		context.JSON(200, H{
-			"message": "OK",
-		})
-	})
+	supabaseClient := lib.NewSupabaseClient()
 
-	server.GET("/hello", func(context *Context) {
-		name := context.Query("name")
-		if name == "" {
-			context.JSON(400, H{
-				"message": "name not found",
-			})
-		} else {
-			context.JSON(200, H{
-				"data": fmt.Sprintf("Hello %s!", name),
-			})
-		}
+	// route testing
+	e.GET("/api/ping", func(c echo.Context) error {
+		return c.String(http.StatusOK, "pong")
 	})
+	RegisterLocationRoutes(e, supabaseClient)
+	RegisterTenantRoutes(e, supabaseClient)
+	RegisterMenuRoutes(e, supabaseClient) 
+	RegisterAuthRoutes(e, supabaseClient)
 
-	server.GET("/user/:id", func(context *Context) {
-		context.JSON(400, H{
-			"data": H{
-				"id": context.Param("id"),
-			},
-		})
-	})
+	apiV1 := e.Group("/api/v1", lib.AuthMiddleware)
+	RegisterOrderRoutes(apiV1, supabaseClient)
+	RegisterUserRoutes(apiV1, supabaseClient)
 
-	server.GET("/long/long/long/path/*test", func(context *Context) {
-		context.JSON(200, H{
-			"data": H{
-				"url": context.Path,
-			},
-		})
-	})
-
-	server.Handle(w, r)
+	e.ServeHTTP(w, r)
 }
