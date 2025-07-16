@@ -24,18 +24,25 @@ func RegisterUserRoutes(g *echo.Group, client *supabase.Client) {
 func registerUser(client *supabase.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		type RegisterRequest struct {
-			FullName string `json:"full_name"`
-			Email    string `json:"email"`
-			Password string `json:"password"`
-			Role     string `json:"role,omitempty"` 
+			FullName    string `json:"full_name"`
+			Email       string `json:"email"`
+			PhoneNumber string `json:"phone_number"`
+			Password    string `json:"password"`
+			Role        string `json:"role,omitempty"`
 		}
+
 		req := new(RegisterRequest)
 		if err := c.Bind(req); err != nil {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Request tidak valid"})
 		}
 
+		// Validasi input wajib
+		if req.FullName == "" || req.Email == "" || req.PhoneNumber == "" || req.Password == "" {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Semua field wajib diisi"})
+		}
+
 		if req.Role == "" {
-			req.Role = RoleUser 
+			req.Role = RoleUser
 		}
 		if !IsValidRole(req.Role) {
 			return c.JSON(http.StatusBadRequest, echo.Map{
@@ -51,6 +58,7 @@ func registerUser(client *supabase.Client) echo.HandlerFunc {
 		newUser := User{
 			FullName:     req.FullName,
 			Email:        req.Email,
+			PhoneNumber:  req.PhoneNumber,
 			PasswordHash: string(hashedPassword),
 			Role:         req.Role,
 			CreatedAt:    time.Now(),
@@ -59,7 +67,10 @@ func registerUser(client *supabase.Client) echo.HandlerFunc {
 		var results []User
 		data, _, err := client.From("users").Insert(newUser, false, "error", "", "exact").Execute()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal mendaftarkan pengguna, mungkin email sudah terdaftar"})
+			fmt.Println("Insert error:", err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{
+				"error": "Gagal mendaftarkan pengguna, mungkin email atau nomor sudah terdaftar",
+			})
 		}
 
 		json.Unmarshal(data, &results)
