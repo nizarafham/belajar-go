@@ -17,7 +17,7 @@ type Tenant struct {
 	Description        string `json:"description,omitempty"`
 	LogoURL            string `json:"logo_url,omitempty"`
 	IsOpen             bool   `json:"is_open"`
-	// Field untuk menyimpan ID Sub-Account Xendit milik tenant.
+	//  sub-Account Xendit tenant.
 	XenditSubaccountID string `json:"xendit_subaccount_id,omitempty"`
 }
 
@@ -38,7 +38,7 @@ type User struct {
 	Email        string    `json:"email"`
 	PhoneNumber  string    `json:"phone_number,omitempty"`
 	PasswordHash string    `json:"-"` 
-	Role         string    `json:"role,omitempty"`
+	Role         string    `json:"role,omitempty"` 
 	CreatedAt    time.Time `json:"created_at,omitempty"`
 }
 
@@ -65,4 +65,19 @@ type OrderItem struct {
 	PricePerItem float64 `json:"price_per_item"`
 	
 	MenuInfo Menu `json:"menu_info,omitempty"`
+}
+
+const (
+	RoleUser         = "user"
+	RoleTenantOwner  = "tenant_owner"
+	RoleDriver       = "driver"
+)
+
+func IsValidRole(role string) bool {
+	switch role {
+	case RoleUser, RoleTenantOwner, RoleDriver:
+		return true
+	default:
+		return false
+	}
 }

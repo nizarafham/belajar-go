@@ -27,13 +27,22 @@ func registerUser(client *supabase.Client) echo.HandlerFunc {
 			FullName string `json:"full_name"`
 			Email    string `json:"email"`
 			Password string `json:"password"`
+			Role     string `json:"role,omitempty"` 
 		}
 		req := new(RegisterRequest)
 		if err := c.Bind(req); err != nil {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Request tidak valid"})
 		}
 
-		// Hash password
+		if req.Role == "" {
+			req.Role = RoleUser 
+		}
+		if !IsValidRole(req.Role) {
+			return c.JSON(http.StatusBadRequest, echo.Map{
+				"error": "Role tidak valid. Pilihan: user, tenant_owner, driver",
+			})
+		}
+
 		hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal memproses password"})
@@ -43,7 +52,7 @@ func registerUser(client *supabase.Client) echo.HandlerFunc {
 			FullName:     req.FullName,
 			Email:        req.Email,
 			PasswordHash: string(hashedPassword),
-			Role:         "student", 
+			Role:         req.Role,
 			CreatedAt:    time.Now(),
 		}
 
@@ -58,7 +67,6 @@ func registerUser(client *supabase.Client) echo.HandlerFunc {
 	}
 }
 
-// Handler untuk login
 func loginUser(client *supabase.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		type LoginRequest struct {
@@ -77,13 +85,11 @@ func loginUser(client *supabase.Client) echo.HandlerFunc {
 		}
 		json.Unmarshal(data, &result)
 
-		// Bandingkan password
 		err = bcrypt.CompareHashAndPassword([]byte(result.PasswordHash), []byte(req.Password))
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Email atau password salah"})
 		}
 
-		// Buat JWT
 		token, err := lib.GenerateJWT(result.ID, result.Role)
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": "Gagal membuat token"})
@@ -92,11 +98,16 @@ func loginUser(client *supabase.Client) echo.HandlerFunc {
 		return c.JSON(http.StatusOK, echo.Map{
 			"message": "Login berhasil",
 			"token":   token,
+			"user": echo.Map{
+				"id":        result.ID,
+				"full_name": result.FullName,
+				"email":     result.Email,
+				"role":      result.Role,
+			},
 		})
 	}
 }
 
-// Handler untuk mendapatkan profil pengguna
 func getProfile(client *supabase.Client) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		userID := c.Get("userID").(int64)
